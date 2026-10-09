@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Star Runner 3D — Phone &amp; Tablet</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070b18; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #eef2ff; }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; pointer-events: none; z-index: 5; }
+  .pill { background: rgba(10,16,34,.62); border: 1px solid rgba(255,255,255,.18); border-radius: 999px; padding: 8px 14px; font-size: 15px; font-weight: 700; backdrop-filter: blur(6px); }
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10; background: radial-gradient(ellipse at center, rgba(7,11,24,.15) 0%, rgba(7,11,24,.72) 100%); padding: 20px; }
+  #overlay.hidden { display: none; }
+  .card { width: min(420px, 92vw); text-align: center; background: rgba(12,19,40,.88); border: 1px solid rgba(120,160,255,.35); border-radius: 20px; padding: 26px 22px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .card h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: .5px; }
+  .card h1 span { background: linear-gradient(90deg,#7dd3fc,#c084fc,#f472b6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card p { margin: 8px 0 16px; color: #b9c4e8; font-size: 14.5px; line-height: 1.5; }
+  #playBtn { font-size: 20px; font-weight: 800; border: 0; border-radius: 14px; padding: 14px 44px; color: #0b1022; background: linear-gradient(90deg,#7dd3fc,#a5b4fc); cursor: pointer; min-height: 56px; min-width: 180px; }
+  #playBtn:active { transform: scale(.97); }
+  .hint { margin-top: 12px; font-size: 12.5px; color: #8b96bd; }
+  #controls { position: fixed; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; justify-content: space-between; padding: 0 18px; z-index: 6; }
+  #controls button { width: 84px; height: 84px; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); background: rgba(15,23,48,.55); color: #fff; font-size: 34px; font-weight: 800; backdrop-filter: blur(6px); touch-action: none; }
+  #controls button:active { background: rgba(125,211,252,.5); }
+  @media (hover:hover) and (pointer:fine) { #controls { display: none; } }
+  #gameover { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10; background: rgba(4,7,16,.6); padding: 20px; }
+  #gameover.hidden { display: none; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="hud">
+  <div class="pill" id="score">⭐ 0</div>
+  <div class="pill" id="best">BEST 0</div>
+  <div class="pill" id="speed">1.0x</div>
+</div>
+<div id="overlay">
+  <div class="card">
+    <h1>STAR <span>RUNNER</span> 3D</h1>
+    <p>Dodge the red blocks, grab the gold stars.<br/>Arrow keys / A D on desktop.<br/>Tap ◀ ▶ buttons or swipe on phone &amp; tablet.</p>
+    <button id="playBtn" type="button">Play</button>
+    <div class="hint">Tip: one tap = one lane. Survive to go faster.</div>
+  </div>
+</div>
+<div id="gameover" class="hidden">
+  <div class="card">
+    <h1>Game <span>Over</span></h1>
+    <p id="finalScore">Score 0</p>
+    <button id="playBtn2" type="button" style="font-size:18px;font-weight:800;border:0;border-radius:14px;padding:14px 40px;color:#0b1022;background:linear-gradient(90deg,#fcd34d,#f472b6);cursor:pointer;min-height:56px;">Restart</button>
+  </div>
+</div>
+<div id="controls">
+  <button id="leftBtn" type="button" aria-label="Move left">◀</button>
+  <button id="rightBtn" type="button" aria-label="Move right">▶</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070b18);
+scene.fog = new THREE.Fog(0x070b18, 18, 46);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100);
+camera.position.set(0, 4.6, 8.2);
+camera.lookAt(0, 1.2, -6);
+scene.add(new THREE.HemisphereLight(0x9db8ff, 0x1a1030, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(4, 8, 4);
+scene.add(sun);
+const track = new THREE.Mesh(new THREE.PlaneGeometry(9, 80), new THREE.MeshStandardMaterial({ color: 0x131c3a, roughness: .9 }));
+track.rotation.x = -Math.PI / 2; track.position.z = -20; scene.add(track);
+const grid = new THREE.GridHelper(80, 40, 0x38bdf8, 0x2a3a6e);
+grid.position.y = 0.01; grid.position.z = -20; grid.material.transparent = true; grid.material.opacity = .45; scene.add(grid);
+for (let i = -4; i <= 4; i += 2) {
+  const line = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 80), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+  line.position.set(i, 0.02, -20); line.material.transparent = true; line.material.opacity = .5; scene.add(line);
+}
+const player = new THREE.Mesh(new THREE.SphereGeometry(0.55, 24, 18), new THREE.MeshStandardMaterial({ color: 0x7dd3fc, emissive: 0x0ea5e9, emissiveIntensity: .55, roughness: .3 }));
+player.position.set(0, 0.7, 0); scene.add(player);
+const glow = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.06, 10, 32), new THREE.MeshBasicMaterial({ color: 0xc084fc }));
+glow.rotation.x = Math.PI / 2; glow.position.copy(player.position); scene.add(glow);
+const starGeo = new THREE.OctahedronGeometry(0.34);
+const starMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: .9 });
+const boxGeo = new THREE.BoxGeometry(1.15, 1.15, 1.15);
+const boxMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x7f1d1d, emissiveIntensity: .5, roughness: .5 });
+const lanes = [-2.4, 0, 2.4];
+let entities = [], score = 0, best = Number(localStorage.getItem('starRunnerBest') || 0), speed = 9, lane = 1, targetX = 0, playing = false, dead = false, spawnT = 0;
+const scoreEl = document.getElementById('score'), bestEl = document.getElementById('best'), speedEl = document.getElementById('speed');
+bestEl.textContent = 'BEST ' + best;
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+function spawn() {
+  const isStar = Math.random() < 0.45;
+  const m = new THREE.Mesh(isStar ? starGeo : boxGeo, isStar ? starMat : boxMat);
+  const l = Math.floor(Math.random() * 3);
+  m.position.set(lanes[l], isStar ? 0.7 : 0.6, -34);
+  m.userData = { star: isStar, lane: l, spin: Math.random() * 2 };
+  scene.add(m); entities.push(m);
+}
+function reset() { for (const e of entities) scene.remove(e); entities = []; score = 0; speed = 9; lane = 1; targetX = 0; dead = false; spawnT = 0; player.position.x = 0; updateHud(); }
+function updateHud() { scoreEl.textContent = '⭐ ' + score; speedEl.textContent = (speed / 9).toFixed(1) + 'x'; bestEl.textContent = 'BEST ' + best; }
+function startGame() { reset(); playing = true; document.getElementById('overlay').classList.add('hidden'); document.getElementById('gameover').classList.add('hidden'); }
+function endGame() { dead = true; playing = false; best = Math.max(best, score); localStorage.setItem('starRunnerBest', best); document.getElementById('finalScore').textContent = 'Score ' + score + ' — Best ' + best; document.getElementById('gameover').classList.remove('hidden'); updateHud(); }
+document.getElementById('playBtn').addEventListener('click', startGame);
+document.getElementById('playBtn2').addEventListener('click', startGame);
+function move(d) { if (!playing) return; lane = Math.max(0, Math.min(2, lane + d)); targetX = lanes[lane]; }
+addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') move(-1); if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') move(1); if ((e.key === ' ' || e.key === 'Enter') && !playing) startGame(); });
+document.getElementById('leftBtn').addEventListener('pointerdown', e => { e.preventDefault(); move(-1); });
+document.getElementById('rightBtn').addEventListener('pointerdown', e => { e.preventDefault(); move(1); });
+let touchX = null;
+canvas.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
+canvas.addEventListener('touchend', e => { if (touchX === null) return; const dx = e.changedTouches[0].clientX - touchX; if (Math.abs(dx) > 24) move(dx < 0 ? -1 : 1); else if (!playing && dead) startGame(); touchX = null; }, { passive: true });
+canvas.addEventListener('mousedown', () => { if (!playing && dead) startGame(); });
+const clock = new THREE.Clock();
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  player.position.x += (targetX - player.position.x) * Math.min(1, dt * 12);
+  player.position.y = 0.7 + Math.sin(t * 5) * 0.07;
+  glow.position.set(player.position.x, 0.06, player.position.z);
+  glow.rotation.z = t * 1.5;
+  grid.position.z = -20 + (t * speed * 0.35 % 2);
+  if (playing && !dead) {
+    speed += dt * 0.35;
+    spawnT -= dt;
+    if (spawnT <= 0) { spawn(); spawnT = Math.max(0.28, 0.75 - speed * 0.022); }
+    for (let i = entities.length - 1; i >= 0; i--) {
+      const e = entities[i];
+      e.position.z += speed * dt;
+      e.rotation.y += dt * (1 + e.userData.spin);
+      if (e.userData.star) e.rotation.x += dt * 2;
+      if (e.position.z > 3) { scene.remove(e); entities.splice(i, 1); continue; }
+      const dx = Math.abs(e.position.x - player.position.x), dz = Math.abs(e.position.z - player.position.z);
+      if (dz < 0.8 && dx < 0.75) {
+        if (e.userData.star) { score += 10; scene.remove(e); entities.splice(i, 1); }
+        else { scene.remove(e); entities.splice(i, 1); updateHud(); endGame(); return; }
+      }
+    }
+    updateHud();
+  } else if (!playing && !dead) {
+    if (Math.random() < 0.02 && entities.length < 8) spawn();
+    for (let i = entities.length - 1; i >= 0; i--) { const e = entities[i]; e.position.z += 6 * dt; e.rotation.y += dt; if (e.position.z > 3) { scene.remove(e); entities.splice(i, 1); } }
+  }
+  renderer.render(scene, camera);
+}
+updateHud(); tick();
+</script>
+</body>
+</html>
